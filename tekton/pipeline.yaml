@@ -47,7 +47,7 @@ spec:
             - "--statistics"
       runAfter:
         - clone
-    - name: test
+    - name: tests
       workspaces:
         - name: source
           workspace: pipeline-workspace
@@ -57,7 +57,9 @@ spec:
         - name: args
           value:
             - "-v"
+            - "--with-spec"
+            - "--spec-color"
         - name: database_uri
           value: "sqlite:///test.db"
       runAfter:
-        - lint
+        - clone
