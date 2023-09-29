@@ -1,4 +1,3 @@
----
 apiVersion: tekton.dev/v1beta1
 kind: Pipeline
 metadata:
@@ -6,12 +5,12 @@ metadata:
 spec:
   workspaces:
     - name: pipeline-workspace
+    - name: manifest-dir
   params:
     - name: repo-url
     - name: branch
       default: main
     - name: build-image
-      default: us.icr.io/$SN_ICR_NAMESPACE/accounts:1
   tasks:
     - name: init
       workspaces:
@@ -19,6 +18,7 @@ spec:
           workspace: pipeline-workspace
       taskRef:
         name: init
+
     - name: clone
       workspaces:
         - name: source
@@ -32,6 +32,7 @@ spec:
           value: $(params.branch)
       runAfter:
         - init
+
     - name: lint
       workspaces:
         - name: source
@@ -49,6 +50,7 @@ spec:
             - "--statistics"
       runAfter:
         - clone
+
     - name: tests
       workspaces:
         - name: source
@@ -57,22 +59,39 @@ spec:
         name: nose
       params:
         - name: args
-          value:
-            - "-v"
-            - "--with-spec"
-            - "--spec-color"
+          value: "-v --with-spec --spec-color"
+        - name: database_uri
+          value: "sqlite:///test.db"
       runAfter:
         - clone
+
     - name: build
       workspaces:
         - name: source
           workspace: pipeline-workspace
       taskRef:
         name: buildah
-        kind: ClusterTask
       params:
         - name: IMAGE
           value: "$(params.build-image)"
       runAfter:
         - tests
-        - lint
+
+    - name: deploy
+      workspaces:
+        - name: manifest-dir
+          workspace: pipeline-workspace
+      taskRef:
+        name: openshift-client
+      kind: ClusterTask
+      params:
+        - name: SCRIPT
+          value: |
+            echo "Updating manifest..."
+            sed -i "s|IMAGE_NAME_HERE|$(params.build-image)|g" deploy/deployment.yaml
+            cat deploy/deployment.yaml
+            echo "Deploying to OpenShift..."
+            oc apply -f deploy/
+            oc get pods -l app=accounts
+      runAfter:
+        - build
